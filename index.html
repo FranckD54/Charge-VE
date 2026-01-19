@@ -46,6 +46,7 @@ button{
 nav button{width:49%;}
 input,select{width:100%;}
 label {margin-top:8px; display:block;}
+.readonly{opacity:0.4;}
 </style>
 </head>
 
@@ -74,11 +75,6 @@ label {margin-top:8px; display:block;}
 </div>
 
 <div class="card">
-<label>Véhicule</label>
-<select id="vehicule"></select>
-</div>
-
-<div class="card">
 <label>Charge actuelle : <b><span id="socNowVal">40</span>%</b></label>
 <input type="range" min="0" max="100" value="40" id="socNow">
 
@@ -86,7 +82,7 @@ label {margin-top:8px; display:block;}
 <input type="range" min="0" max="100" value="80" id="socTarget">
 </div>
 
-<div class="card">
+<div class="card" id="ampBox">
 <label>Ampérage VE : <b><span id="ampVal">24</span> A</b></label>
 <input type="range" min="20" max="32" step="4" value="24" id="amp">
 <small>≈ <span id="kwVal"></span> kW</small>
@@ -102,8 +98,8 @@ label {margin-top:8px; display:block;}
 <div class="card">
 <label>Plage de charge</label>
 <select id="plage">
-  <option value="hc1">HC nuit</option>
-  <option value="hc2">HC journée</option>
+  <option value="hc1">HC nuit (00:50–06:50)</option>
+  <option value="hc2">HC journée (14:50–16:50)</option>
   <option value="libre">Plage libre</option>
 </select>
 
@@ -113,15 +109,16 @@ label {margin-top:8px; display:block;}
 </div>
 </div>
 
-<div class="card">
+<div class="card" id="strategyBox" style="display:none">
 <label>Stratégie</label>
 <select id="strategy">
 <option value="objectif">Atteindre l’objectif coûte que coûte</option>
-<option value="reseau">Éviter toute limite réseau</option>
+<option value="reseau">Préserver le réseau</option>
 </select>
 </div>
 
 <div class="card verdict" id="verdict"></div>
+<div id="endInfo" style="margin-top:10px;"></div>
 
 </div>
 
@@ -129,49 +126,22 @@ label {margin-top:8px; display:block;}
 <div id="param" style="display:none">
 
 <div class="card">
-<h3>Véhicules</h3>
-<label>Nom</label>
-<input id="vname" value="VE principale">
-<label>Batterie (kWh)</label>
-<input id="vbatt" type="number" value="81">
-<label>Puissance AC max (kW)</label>
-<input id="vac" type="number" value="11">
-<button onclick="saveVehicle()">Enregistrer véhicule</button>
+<h3>Réseau</h3>
+<label>Limite sécurisée (A)</label>
+<input id="limit" type="number" value="45">
 </div>
 
 <div class="card">
 <h3>Appareils (pics en A)</h3>
-<label>Lave-linge (A)</label>
-<input id="pll" type="number" value="12">
-<label>Lave-vaisselle (A)</label>
-<input id="plv" type="number" value="10">
-<label>Sèche-linge (A)</label>
-<input id="psl" type="number" value="4">
-<label>Conso fantôme (A)</label>
-<input id="pf" type="number" value="0.7">
-</div>
-
-<div class="card">
-<h3>Heures creuses</h3>
-<label>HC nuit</label>
-<input id="hc1" value="00:50-06:50">
-<label>HC journée</label>
-<input id="hc2" value="14:50-16:50">
-</div>
-
-<div class="card">
-<h3>Réseau</h3>
-<label>Limite sécurisée (A)</label>
-<input id="limit" type="number" value="45">
-<button onclick="saveParams()">Enregistrer paramètres</button>
+<label>Lave-linge</label><input id="pll" type="number" value="12">
+<label>Lave-vaisselle</label><input id="plv" type="number" value="10">
+<label>Sèche-linge</label><input id="psl" type="number" value="4">
+<label>Conso fantôme</label><input id="pf" type="number" value="0.7">
 </div>
 
 </div>
 
 <script>
-let vehicles=JSON.parse(localStorage.vehicles||
-'[{"name":"VE principale","batt":81,"ac":11}]');
-
 let machine={ll:false,lv:false,sl:false};
 
 function show(id){
@@ -186,29 +156,33 @@ function toggle(id){
   display();
 }
 
-function loadVehicles(){
-  vehicule.innerHTML="";
-  vehicles.forEach((v,i)=>{
-    vehicule.innerHTML+=`<option value="${i}">${v.name}</option>`;
-  });
-}
-loadVehicles();
-
 mode.onchange=()=>{
   autoBox.style.display=mode.value=="auto"?"block":"none";
+  strategyBox.style.display=mode.value=="auto"?"block":"none";
+  amp.disabled = mode.value=="auto";
+  ampBox.className = mode.value=="auto"?"card readonly":"card";
+  display();
 };
 
 plage.onchange=()=>{
   libreBox.style.display=plage.value=="libre"?"block":"none";
+  display();
 };
 
 libre.oninput=()=>libreVal.textContent=libre.value;
 
-function hoursAvailable(){
-  if(plage.value=="libre") return +libre.value;
-  const v=(plage.value=="hc1"?"00:50-06:50":"14:50-16:50");
-  const [a,b]=v.split("-");
-  return (new Date("1970-1-1 "+b)-new Date("1970-1-1 "+a))/36e5;
+function toMin(hm){const[a,b]=hm.split(":");return a*60+ +b;}
+function hhmm(m){m=(m+1440)%1440;return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");}
+
+function startTime(){
+  if(plage.value=="hc1") return toMin("00:50");
+  if(plage.value=="hc2") return toMin("14:50");
+  const n=new Date(); return n.getHours()*60+n.getMinutes();
+}
+function endTime(){
+  if(plage.value=="hc1") return toMin("06:50");
+  if(plage.value=="hc2") return toMin("16:50");
+  return startTime()+libre.value*60;
 }
 
 function totalCurrent(a){
@@ -223,26 +197,17 @@ function auto(){
   let chosen=null;
   [32,28,24,20].forEach(a=>{
     const okNet=totalCurrent(a)<=limit.value;
-    const v=vehicles[vehicule.value];
-    const need=(socTarget.value-socNow.value)/100*v.batt;
-    const power=Math.min(v.ac,a*230/1000);
-    const okCharge=(need/power)<=hoursAvailable();
-    if(strategy.value=="objectif" && okNet && okCharge) chosen=a;
-    if(strategy.value=="reseau" && okNet && chosen===null) chosen=a;
+    if(!okNet) return;
+    if(strategy.value=="reseau" && chosen===null) chosen=a;
+    if(strategy.value=="objectif"){
+      const power=a*230/1000;
+      const need=(socTarget.value-socNow.value)/100*81;
+      const dur=(endTime()-startTime())/60;
+      if(power*dur>=need) chosen=a;
+    }
   });
   if(chosen!==null) amp.value=chosen;
   display();
-}
-
-function saveVehicle(){
-  vehicles[0]={name:vname.value,batt:+vbatt.value,ac:+vac.value};
-  localStorage.vehicles=JSON.stringify(vehicles);
-  loadVehicles();
-  alert("Véhicule enregistré");
-}
-
-function saveParams(){
-  alert("Paramètres enregistrés");
 }
 
 function display(){
@@ -251,30 +216,35 @@ function display(){
   ampVal.textContent=amp.value;
   kwVal.textContent=(amp.value*230/1000).toFixed(1);
 
-  const v=vehicles[vehicule.value];
-  const need=(socTarget.value-socNow.value)/100*v.batt;
-  const power=Math.min(v.ac,amp.value*230/1000);
-  const charged=Math.min(need,power*hoursAvailable());
-  const finalSoc=socNow.value*1+charged/v.batt*100;
+  const need=(socTarget.value-socNow.value)/100*81;
+  const power=amp.value*230/1000;
+  const duration=(endTime()-startTime())/60;
+  const charged=Math.min(need,power*duration);
+  const finalSoc=socNow.value*1+charged/81*100;
   const total=totalCurrent(+amp.value);
 
   let txt="",cls="";
   if(total>limit.value){
-    txt="Recharge impossible – réseau saturé";
+    txt="Recharge impossible – limite réseau";
     cls="bad";
   }else if(charged>=need){
-    txt=`Recharge possible ✔<br>${charged.toFixed(1)} kWh chargés<br>SOC final : ${finalSoc.toFixed(0)} %`;
+    txt="Recharge possible ✔";
     cls="ok";
   }else{
-    txt=`Recharge partielle<br>${charged.toFixed(1)} kWh chargés<br>SOC final : ${finalSoc.toFixed(0)} %`;
+    txt="Recharge partielle ⚠️";
     cls="warn";
   }
+
   verdict.className="card verdict "+cls;
   verdict.innerHTML=txt;
+  endInfo.innerHTML=
+    "Fin de charge : <b>"+hhmm(endTime())+
+    "</b><br>SOC atteint : <b>"+finalSoc.toFixed(0)+" %</b>";
 }
 
-["amp","socNow","socTarget","vehicule","strategy","plage"]
-.forEach(id=>document.getElementById(id).oninput=display);
+["amp","socNow","socTarget","limit"].forEach(id=>{
+  document.getElementById(id).oninput=display;
+});
 
 display();
 </script>
