@@ -151,21 +151,21 @@ function show(id){
 
 function toggle(id){
   machine[id]=!machine[id];
-  document.getElementById(id+"Btn").className=
+  document.getElementById(id+"Btn").className =
     "toggle "+(machine[id]?"on":"off");
   display();
 }
 
 mode.onchange=()=>{
-  autoBox.style.display=mode.value=="auto"?"block":"none";
-  strategyBox.style.display=mode.value=="auto"?"block":"none";
+  autoBox.style.display = mode.value=="auto"?"block":"none";
+  strategyBox.style.display = mode.value=="auto"?"block":"none";
   amp.disabled = mode.value=="auto";
   ampBox.className = mode.value=="auto"?"card readonly":"card";
   display();
 };
 
 plage.onchange=()=>{
-  libreBox.style.display=plage.value=="libre"?"block":"none";
+  libreBox.style.display = plage.value=="libre"?"block":"none";
   display();
 };
 
@@ -193,51 +193,79 @@ function totalCurrent(a){
    + +pf.value;
 }
 
+/* === MODE AUTOMATIQUE CORRIGÉ === */
 function auto(){
-  let chosen=null;
-  [32,28,24,20].forEach(a=>{
-    const okNet=totalCurrent(a)<=limit.value;
-    if(!okNet) return;
-    if(strategy.value=="reseau" && chosen===null) chosen=a;
-    if(strategy.value=="objectif"){
-      const power=a*230/1000;
-      const need=(socTarget.value-socNow.value)/100*81;
-      const dur=(endTime()-startTime())/60;
-      if(power*dur>=need) chosen=a;
+  const ampsHighToLow = [32,28,24,20];
+  const ampsLowToHigh = [20,24,28,32];
+
+  let chosen = null;
+
+  if(strategy.value=="objectif"){
+    for(let a of ampsHighToLow){
+      if(totalCurrent(a) > limit.value) continue;
+
+      const power = a * 230 / 1000;
+      const duration = (endTime() - startTime()) / 60;
+      const need = (socTarget.value - socNow.value) / 100 * 81;
+
+      if(power * duration >= need){
+        chosen = a;
+        break;
+      }
     }
-  });
-  if(chosen!==null) amp.value=chosen;
+  } else {
+    for(let a of ampsLowToHigh){
+      if(totalCurrent(a) <= limit.value){
+        chosen = a;
+        break;
+      }
+    }
+  }
+
+  if(chosen === null){
+    for(let a of ampsHighToLow){
+      if(totalCurrent(a) <= limit.value){
+        chosen = a;
+        break;
+      }
+    }
+  }
+
+  if(chosen !== null){
+    amp.value = chosen;
+  }
+
   display();
 }
 
 function display(){
-  socNowVal.textContent=socNow.value;
-  socTargetVal.textContent=socTarget.value;
-  ampVal.textContent=amp.value;
-  kwVal.textContent=(amp.value*230/1000).toFixed(1);
+  socNowVal.textContent = socNow.value;
+  socTargetVal.textContent = socTarget.value;
+  ampVal.textContent = amp.value;
+  kwVal.textContent = (amp.value*230/1000).toFixed(1);
 
-  const batt=81;
-  const need=(socTarget.value-socNow.value)/100*batt;
-  const power=amp.value*230/1000;
-  const duration=(endTime()-startTime())/60;
-  const charged=Math.min(need,power*duration);
-  const finalSoc=socNow.value*1+charged/batt*100;
-  const total=totalCurrent(+amp.value);
+  const batt = 81;
+  const need = (socTarget.value - socNow.value) / 100 * batt;
+  const power = amp.value * 230 / 1000;
+  const duration = (endTime() - startTime()) / 60;
+  const charged = Math.min(need, power * duration);
+  const finalSoc = socNow.value*1 + charged / batt * 100;
+  const total = totalCurrent(+amp.value);
 
-  let txt="",cls="";
-  if(total>limit.value){
-    txt="Recharge impossible – limite réseau";
-    cls="bad";
-  }else if(finalSoc >= socTarget.value){
-    txt="Recharge possible ✔";
-    cls="ok";
-  }else{
-    txt="Recharge partielle ⚠️";
-    cls="warn";
+  let txt="", cls="";
+  if(total > limit.value){
+    txt = "Recharge impossible – limite réseau";
+    cls = "bad";
+  } else if(finalSoc >= socTarget.value){
+    txt = "Recharge possible ✔";
+    cls = "ok";
+  } else {
+    txt = "Recharge partielle ⚠️";
+    cls = "warn";
   }
 
-  verdict.className="card verdict "+cls;
-  verdict.innerHTML=txt;
+  verdict.className = "card verdict " + cls;
+  verdict.innerHTML = txt;
 
   endInfo.innerHTML =
     "Fin de charge : <b>"+hhmm(endTime())+"</b><br>" +
@@ -247,7 +275,7 @@ function display(){
 }
 
 ["amp","socNow","socTarget","limit"].forEach(id=>{
-  document.getElementById(id).oninput=display;
+  document.getElementById(id).oninput = display;
 });
 
 display();
