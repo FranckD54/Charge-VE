@@ -110,7 +110,7 @@ label {margin-top:8px; display:block;}
 </div>
 
 <div class="card" id="strategyBox" style="display:none">
-<label>Stratégie</label>
+<label>Stratégie (mode auto)</label>
 <select id="strategy">
 <option value="objectif">Atteindre l’objectif coûte que coûte</option>
 <option value="reseau">Préserver le réseau</option>
@@ -216,18 +216,19 @@ function display(){
   ampVal.textContent=amp.value;
   kwVal.textContent=(amp.value*230/1000).toFixed(1);
 
-  const need=(socTarget.value-socNow.value)/100*81;
+  const batt=81;
+  const need=(socTarget.value-socNow.value)/100*batt;
   const power=amp.value*230/1000;
   const duration=(endTime()-startTime())/60;
   const charged=Math.min(need,power*duration);
-  const finalSoc=socNow.value*1+charged/81*100;
+  const finalSoc=socNow.value*1+charged/batt*100;
   const total=totalCurrent(+amp.value);
 
   let txt="",cls="";
   if(total>limit.value){
     txt="Recharge impossible – limite réseau";
     cls="bad";
-  }else if(charged>=need){
+  }else if(finalSoc >= socTarget.value){
     txt="Recharge possible ✔";
     cls="ok";
   }else{
@@ -237,9 +238,12 @@ function display(){
 
   verdict.className="card verdict "+cls;
   verdict.innerHTML=txt;
-  endInfo.innerHTML=
-    "Fin de charge : <b>"+hhmm(endTime())+
-    "</b><br>SOC atteint : <b>"+finalSoc.toFixed(0)+" %</b>";
+
+  endInfo.innerHTML =
+    "Fin de charge : <b>"+hhmm(endTime())+"</b><br>" +
+    "SOC atteint : <b>"+finalSoc.toFixed(0)+" %</b><br>" +
+    "Ampérage de charge : <b>"+amp.value+" A</b> (≈ "+
+    (amp.value*230/1000).toFixed(1)+" kW)";
 }
 
 ["amp","socNow","socTarget","limit"].forEach(id=>{
