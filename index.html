@@ -109,14 +109,6 @@ label {margin-top:8px; display:block;}
 </div>
 </div>
 
-<div class="card" id="strategyBox" style="display:none">
-<label>Stratégie (mode auto)</label>
-<select id="strategy">
-<option value="objectif">Atteindre l’objectif coûte que coûte</option>
-<option value="reseau">Préserver le réseau</option>
-</select>
-</div>
-
 <div class="card verdict" id="verdict"></div>
 <div id="endInfo" style="margin-top:10px;"></div>
 
@@ -158,7 +150,6 @@ function toggle(id){
 
 mode.onchange=()=>{
   autoBox.style.display = mode.value=="auto"?"block":"none";
-  strategyBox.style.display = mode.value=="auto"?"block":"none";
   amp.disabled = mode.value=="auto";
   ampBox.className = mode.value=="auto"?"card readonly":"card";
   display();
@@ -193,41 +184,15 @@ function totalCurrent(a){
    + +pf.value;
 }
 
-/* === MODE AUTOMATIQUE CORRIGÉ === */
+/* === MODE AUTO V5.5 : MAXIMISATION PURE === */
 function auto(){
-  const ampsHighToLow = [32,28,24,20];
-  const ampsLowToHigh = [20,24,28,32];
-
+  const amps = [32,28,24,20];
   let chosen = null;
 
-  if(strategy.value=="objectif"){
-    for(let a of ampsHighToLow){
-      if(totalCurrent(a) > limit.value) continue;
-
-      const power = a * 230 / 1000;
-      const duration = (endTime() - startTime()) / 60;
-      const need = (socTarget.value - socNow.value) / 100 * 81;
-
-      if(power * duration >= need){
-        chosen = a;
-        break;
-      }
-    }
-  } else {
-    for(let a of ampsLowToHigh){
-      if(totalCurrent(a) <= limit.value){
-        chosen = a;
-        break;
-      }
-    }
-  }
-
-  if(chosen === null){
-    for(let a of ampsHighToLow){
-      if(totalCurrent(a) <= limit.value){
-        chosen = a;
-        break;
-      }
+  for(let a of amps){
+    if(totalCurrent(a) <= limit.value){
+      chosen = a;
+      break; // on prend le PLUS ÉLEVÉ possible
     }
   }
 
