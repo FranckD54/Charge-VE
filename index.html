@@ -45,12 +45,21 @@ button{
 .verdict{font-size:18px; font-weight:bold;}
 nav button{width:49%;}
 input,select{width:100%;}
+label {margin-top:8px; display:block;}
 </style>
 </head>
 
 <body>
 
 <h1>Charge VE</h1>
+
+<nav>
+  <button onclick="show('simu')">Simulation</button>
+  <button onclick="show('param')">Paramètres</button>
+</nav>
+
+<!-- SIMULATION -->
+<div id="simu">
 
 <div class="card">
 <label>Mode</label>
@@ -85,9 +94,9 @@ input,select{width:100%;}
 
 <div class="card">
 <label>Machines prévues</label>
-<div id="ll" class="toggle off" onclick="toggle('ll')">Lave-linge</div>
-<div id="lv" class="toggle off" onclick="toggle('lv')">Lave-vaisselle</div>
-<div id="sl" class="toggle off" onclick="toggle('sl')">Sèche-linge</div>
+<div id="llBtn" class="toggle off" onclick="toggle('ll')">Lave-linge</div>
+<div id="lvBtn" class="toggle off" onclick="toggle('lv')">Lave-vaisselle</div>
+<div id="slBtn" class="toggle off" onclick="toggle('sl')">Sèche-linge</div>
 </div>
 
 <div class="card">
@@ -114,16 +123,66 @@ input,select{width:100%;}
 
 <div class="card verdict" id="verdict"></div>
 
+</div>
+
+<!-- PARAMETRES -->
+<div id="param" style="display:none">
+
+<div class="card">
+<h3>Véhicules</h3>
+<label>Nom</label>
+<input id="vname" value="VE principale">
+<label>Batterie (kWh)</label>
+<input id="vbatt" type="number" value="81">
+<label>Puissance AC max (kW)</label>
+<input id="vac" type="number" value="11">
+<button onclick="saveVehicle()">Enregistrer véhicule</button>
+</div>
+
+<div class="card">
+<h3>Appareils (pics en A)</h3>
+<label>Lave-linge (A)</label>
+<input id="pll" type="number" value="12">
+<label>Lave-vaisselle (A)</label>
+<input id="plv" type="number" value="10">
+<label>Sèche-linge (A)</label>
+<input id="psl" type="number" value="4">
+<label>Conso fantôme (A)</label>
+<input id="pf" type="number" value="0.7">
+</div>
+
+<div class="card">
+<h3>Heures creuses</h3>
+<label>HC nuit</label>
+<input id="hc1" value="00:50-06:50">
+<label>HC journée</label>
+<input id="hc2" value="14:50-16:50">
+</div>
+
+<div class="card">
+<h3>Réseau</h3>
+<label>Limite sécurisée (A)</label>
+<input id="limit" type="number" value="45">
+<button onclick="saveParams()">Enregistrer paramètres</button>
+</div>
+
+</div>
+
 <script>
 let vehicles=JSON.parse(localStorage.vehicles||
 '[{"name":"VE principale","batt":81,"ac":11}]');
 
 let machine={ll:false,lv:false,sl:false};
 
+function show(id){
+  simu.style.display=id=="simu"?"block":"none";
+  param.style.display=id=="param"?"block":"none";
+}
+
 function toggle(id){
   machine[id]=!machine[id];
-  const e=document.getElementById(id);
-  e.className="toggle "+(machine[id]?"on":"off");
+  document.getElementById(id+"Btn").className=
+    "toggle "+(machine[id]?"on":"off");
   display();
 }
 
@@ -154,16 +213,16 @@ function hoursAvailable(){
 
 function totalCurrent(a){
   return a
-   + (machine.ll?14:0)
-   + (machine.lv?14:0)
-   + (machine.sl?18:0)
-   + 0.7;
+   + (machine.ll?+pll.value:0)
+   + (machine.lv?+plv.value:0)
+   + (machine.sl?+psl.value:0)
+   + +pf.value;
 }
 
 function auto(){
   let chosen=null;
   [32,28,24,20].forEach(a=>{
-    const okNet=totalCurrent(a)<=45;
+    const okNet=totalCurrent(a)<=limit.value;
     const v=vehicles[vehicule.value];
     const need=(socTarget.value-socNow.value)/100*v.batt;
     const power=Math.min(v.ac,a*230/1000);
@@ -173,6 +232,17 @@ function auto(){
   });
   if(chosen!==null) amp.value=chosen;
   display();
+}
+
+function saveVehicle(){
+  vehicles[0]={name:vname.value,batt:+vbatt.value,ac:+vac.value};
+  localStorage.vehicles=JSON.stringify(vehicles);
+  loadVehicles();
+  alert("Véhicule enregistré");
+}
+
+function saveParams(){
+  alert("Paramètres enregistrés");
 }
 
 function display(){
@@ -189,7 +259,7 @@ function display(){
   const total=totalCurrent(+amp.value);
 
   let txt="",cls="";
-  if(total>45){
+  if(total>limit.value){
     txt="Recharge impossible – réseau saturé";
     cls="bad";
   }else if(charged>=need){
