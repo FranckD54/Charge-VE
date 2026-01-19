@@ -4,17 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Charge VE</title>
-<link rel="manifest" href="manifest.json">
 
 <style>
-:root {
+:root{
   --bg:#ffffff; --txt:#000; --card:#f2f2f2;
   --ok:#2e7d32; --warn:#f9a825; --bad:#c62828;
 }
-@media (prefers-color-scheme: dark) {
-  :root { --bg:#121212; --txt:#fff; --card:#1e1e1e; }
+@media (prefers-color-scheme: dark){
+  :root{--bg:#121212; --txt:#fff; --card:#1e1e1e;}
 }
-body {
+body{
   font-family:-apple-system;
   background:var(--bg); color:var(--txt);
   margin:20px;
@@ -35,6 +34,10 @@ button{
 .warn{color:var(--warn);}
 .bad{color:var(--bad);}
 nav button{width:49%;}
+.verdict{
+  font-size:18px;
+  font-weight:bold;
+}
 </style>
 </head>
 
@@ -47,6 +50,7 @@ nav button{width:49%;}
 <button onclick="show('param')">Paramètres</button>
 </nav>
 
+<!-- SIMULATION -->
 <div id="simu">
 
 <div class="card">
@@ -65,24 +69,28 @@ nav button{width:49%;}
 <div class="card">
 <label>Ampérage VE : <b><span id="ampVal">24</span> A</b></label>
 <input type="range" min="20" max="32" step="4" value="24" id="amp">
-<small><span id="kwVal"></span> kW</small>
+<small>≈ <span id="kwVal"></span> kW</small>
 </div>
 
 <div class="card">
-<label>Lave-linge</label>
-<input type="range" min="0" max="1" id="ll">
-<label>Lave-vaisselle</label>
-<input type="range" min="0" max="1" id="lv">
-<label>Sèche-linge</label>
-<input type="range" min="0" max="1" id="sl">
+<label>Machines prévues</label>
+<label>LL</label><input type="range" min="0" max="1" id="ll">
+<label>LV</label><input type="range" min="0" max="1" id="lv">
+<label>Sèche-linge</label><input type="range" min="0" max="1" id="sl">
 </div>
 
 <div class="card">
-<label>VMC</label>
-<select id="vmc">
-<option value="2">Ventilation seule</option>
-<option value="3.6">Ventilation + ECS</option>
+<label>Plage de charge</label>
+<select id="plage">
+  <option value="hc1">HC nuit</option>
+  <option value="hc2">HC journée</option>
+  <option value="libre">Plage libre</option>
 </select>
+
+<div id="libreBox" style="display:none">
+<label>Durée libre : <b><span id="libreVal">2</span> h</b></label>
+<input type="range" min="0.5" max="8" step="0.5" value="2" id="libre">
+</div>
 </div>
 
 <div class="card">
@@ -95,10 +103,11 @@ nav button{width:49%;}
 
 <button onclick="auto()">Recommandation automatique</button>
 
-<div class="card" id="res"></div>
+<div class="card verdict" id="verdict"></div>
 
 </div>
 
+<!-- PARAMETRES -->
 <div id="param" style="display:none">
 
 <div class="card">
@@ -109,14 +118,16 @@ nav button{width:49%;}
 <input id="vbatt" type="number" value="81">
 <label>Puissance AC max (kW)</label>
 <input id="vac" type="number" value="11">
-<button onclick="saveVehicle()">Enregistrer</button>
+<button onclick="saveVehicle()">Enregistrer véhicule</button>
 </div>
 
 <div class="card">
-<h3>Appareils</h3>
-<label>LL / LV (A pic)</label>
+<h3>Appareils (pics)</h3>
+<label>Lave-linge (A)</label>
 <input id="pll" type="number" value="14">
-<label>Sèche-linge (A pic)</label>
+<label>Lave-vaisselle (A)</label>
+<input id="plv" type="number" value="14">
+<label>Sèche-linge (A)</label>
 <input id="psl" type="number" value="18">
 <label>Conso fantôme (A)</label>
 <input id="pf" type="number" value="0.7">
@@ -140,8 +151,8 @@ nav button{width:49%;}
 </div>
 
 <script>
-let vehicles = JSON.parse(localStorage.vehicles ||
- '[{"name":"VE principale","batt":81,"ac":11}]');
+let vehicles=JSON.parse(localStorage.vehicles||
+'[{"name":"VE principale","batt":81,"ac":11}]');
 
 function show(id){
   simu.style.display=id=="simu"?"block":"none";
@@ -163,43 +174,42 @@ function saveVehicle(){
   alert("Véhicule enregistré");
 }
 
-function hcHours(){
-  let total=0;
-  [hc1.value,hc2.value].forEach(h=>{
-    if(h){
-      const [a,b]=h.split("-");
-      const da=new Date("1970-1-1 "+a);
-      const db=new Date("1970-1-1 "+b);
-      total+=(db-da)/36e5;
-    }
-  });
-  return total;
+plage.onchange=()=>{
+  libreBox.style.display=plage.value=="libre"?"block":"none";
+};
+
+libre.oninput=()=>libreVal.textContent=libre.value;
+
+function hoursAvailable(){
+  if(plage.value=="libre") return +libre.value;
+  const v=(plage.value=="hc1"?hc1.value:hc2.value);
+  const [a,b]=v.split("-");
+  return (new Date("1970-1-1 "+b)-new Date("1970-1-1 "+a))/36e5;
 }
 
-function calcTotal(a){
+function totalCurrent(a){
   return a
    + ll.value*pll.value
-   + lv.value*pll.value
+   + lv.value*plv.value
    + sl.value*psl.value
-   + +vmc.value
    + +pf.value;
 }
 
 function auto(){
-  const lim=+limit.value;
-  const strat=strategy.value;
-  const v=vehicles[vehicule.value];
-  const need=(socTarget.value-socNow.value)/100*v.batt;
-  const hours=hcHours();
-
+  let chosen=null;
   [32,28,24,20].forEach(a=>{
+    const okNet=totalCurrent(a)<=limit.value;
+    const v=vehicles[vehicule.value];
+    const need=(socTarget.value-socNow.value)/100*v.batt;
     const power=Math.min(v.ac,a*230/1000);
-    const okCharge=(need/power)<=hours;
-    const okNet=calcTotal(a)<=lim;
-
-    if(strat=="objectif" && okCharge && okNet) amp.value=a;
-    if(strat=="reseau" && okNet) amp.value=a;
+    const okCharge=(need/power)<=hoursAvailable();
+    if(strategy.value=="objectif" && okNet && okCharge) chosen=a;
+    if(strategy.value=="reseau" && okNet && chosen===null) chosen=a;
   });
+  if(chosen!==null){
+    amp.value=chosen;
+    ampVal.textContent=chosen;
+  }
   display();
 }
 
@@ -212,23 +222,31 @@ function display(){
   const v=vehicles[vehicule.value];
   const need=(socTarget.value-socNow.value)/100*v.batt;
   const power=Math.min(v.ac,amp.value*230/1000);
-  const time=need/power;
-  const total=calcTotal(+amp.value);
+  const hours=hoursAvailable();
+  const charged=Math.min(need,power*hours);
+  const finalSoc=socNow.value*1+charged/v.batt*100;
+  const total=totalCurrent(+amp.value);
 
-  let cls="ok", msg="OK";
-  if(total>limit.value && total<=limit.value+5){cls="warn";msg="Limite";}
-  if(total>limit.value+5){cls="bad";msg="Disjonction probable";}
-
-  res.className="card "+cls;
-  res.innerHTML=`
-${msg}<br>
-À charger : ${need.toFixed(1)} kWh<br>
-Temps estimé : ${time.toFixed(1)} h<br>
-Intensité totale : ${total.toFixed(1)} A<br>
-HC dispo : ${hcHours().toFixed(1)} h`;
+  let txt="",cls="";
+  if(total>limit.value){
+    txt="Recharge impossible – réseau saturé";
+    cls="bad";
+  }else if(charged>=need){
+    txt=`Recharge possible ✔<br>
+         ${charged.toFixed(1)} kWh chargés<br>
+         SOC final : ${finalSoc.toFixed(0)} %`;
+    cls="ok";
+  }else{
+    txt=`Recharge partielle<br>
+         ${charged.toFixed(1)} kWh chargés<br>
+         SOC final : ${finalSoc.toFixed(0)} %`;
+    cls="warn";
+  }
+  verdict.className="card verdict "+cls;
+  verdict.innerHTML=txt;
 }
 
-["amp","ll","lv","sl","vmc","socNow","socTarget","vehicule","strategy"]
+["amp","ll","lv","sl","socNow","socTarget","vehicule","strategy","plage"]
 .forEach(id=>document.getElementById(id).oninput=display);
 
 display();
