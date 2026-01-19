@@ -9,6 +9,7 @@
 :root{
   --bg:#ffffff; --txt:#000; --card:#f2f2f2;
   --ok:#2e7d32; --warn:#f9a825; --bad:#c62828;
+  --on:#1e88e5; --off:#bbb;
 }
 @media (prefers-color-scheme: dark){
   :root{--bg:#121212; --txt:#fff; --card:#1e1e1e;}
@@ -25,19 +26,25 @@ h1{font-size:22px;}
   border-radius:12px;
   margin-bottom:15px;
 }
-input,select{width:100%;}
 button{
   width:100%; padding:12px;
   font-size:16px; margin-top:10px;
 }
+.toggle{
+  padding:12px;
+  border-radius:10px;
+  text-align:center;
+  margin-top:8px;
+  font-weight:bold;
+}
+.on{background:var(--on); color:white;}
+.off{background:var(--off); color:black;}
 .ok{color:var(--ok);}
 .warn{color:var(--warn);}
 .bad{color:var(--bad);}
+.verdict{font-size:18px; font-weight:bold;}
 nav button{width:49%;}
-.verdict{
-  font-size:18px;
-  font-weight:bold;
-}
+input,select{width:100%;}
 </style>
 </head>
 
@@ -45,13 +52,17 @@ nav button{width:49%;}
 
 <h1>Charge VE</h1>
 
-<nav>
-<button onclick="show('simu')">Simulation</button>
-<button onclick="show('param')">Paramètres</button>
-</nav>
+<div class="card">
+<label>Mode</label>
+<select id="mode">
+  <option value="manuel">Manuel</option>
+  <option value="auto">Automatique (1 clic)</option>
+</select>
+</div>
 
-<!-- SIMULATION -->
-<div id="simu">
+<div class="card" id="autoBox" style="display:none">
+<button onclick="auto()">1 clic – Régler la charge</button>
+</div>
 
 <div class="card">
 <label>Véhicule</label>
@@ -74,9 +85,9 @@ nav button{width:49%;}
 
 <div class="card">
 <label>Machines prévues</label>
-<label>LL</label><input type="range" min="0" max="1" id="ll">
-<label>LV</label><input type="range" min="0" max="1" id="lv">
-<label>Sèche-linge</label><input type="range" min="0" max="1" id="sl">
+<div id="ll" class="toggle off" onclick="toggle('ll')">Lave-linge</div>
+<div id="lv" class="toggle off" onclick="toggle('lv')">Lave-vaisselle</div>
+<div id="sl" class="toggle off" onclick="toggle('sl')">Sèche-linge</div>
 </div>
 
 <div class="card">
@@ -101,62 +112,19 @@ nav button{width:49%;}
 </select>
 </div>
 
-<button onclick="auto()">Recommandation automatique</button>
-
 <div class="card verdict" id="verdict"></div>
-
-</div>
-
-<!-- PARAMETRES -->
-<div id="param" style="display:none">
-
-<div class="card">
-<h3>Véhicules</h3>
-<label>Nom</label>
-<input id="vname" value="VE principale">
-<label>Batterie (kWh)</label>
-<input id="vbatt" type="number" value="81">
-<label>Puissance AC max (kW)</label>
-<input id="vac" type="number" value="11">
-<button onclick="saveVehicle()">Enregistrer véhicule</button>
-</div>
-
-<div class="card">
-<h3>Appareils (pics)</h3>
-<label>Lave-linge (A)</label>
-<input id="pll" type="number" value="14">
-<label>Lave-vaisselle (A)</label>
-<input id="plv" type="number" value="14">
-<label>Sèche-linge (A)</label>
-<input id="psl" type="number" value="18">
-<label>Conso fantôme (A)</label>
-<input id="pf" type="number" value="0.7">
-</div>
-
-<div class="card">
-<h3>Heures creuses</h3>
-<label>HC nuit</label>
-<input id="hc1" value="00:50-06:50">
-<label>HC journée</label>
-<input id="hc2" value="14:50-16:50">
-</div>
-
-<div class="card">
-<h3>Réseau</h3>
-<label>Limite sécurisée (A)</label>
-<input id="limit" type="number" value="45">
-<button onclick="saveParams()">Enregistrer paramètres</button>
-</div>
-
-</div>
 
 <script>
 let vehicles=JSON.parse(localStorage.vehicles||
 '[{"name":"VE principale","batt":81,"ac":11}]');
 
-function show(id){
-  simu.style.display=id=="simu"?"block":"none";
-  param.style.display=id=="param"?"block":"none";
+let machine={ll:false,lv:false,sl:false};
+
+function toggle(id){
+  machine[id]=!machine[id];
+  const e=document.getElementById(id);
+  e.className="toggle "+(machine[id]?"on":"off");
+  display();
 }
 
 function loadVehicles(){
@@ -167,12 +135,9 @@ function loadVehicles(){
 }
 loadVehicles();
 
-function saveVehicle(){
-  vehicles[0]={name:vname.value,batt:+vbatt.value,ac:+vac.value};
-  localStorage.vehicles=JSON.stringify(vehicles);
-  loadVehicles();
-  alert("Véhicule enregistré");
-}
+mode.onchange=()=>{
+  autoBox.style.display=mode.value=="auto"?"block":"none";
+};
 
 plage.onchange=()=>{
   libreBox.style.display=plage.value=="libre"?"block":"none";
@@ -182,23 +147,23 @@ libre.oninput=()=>libreVal.textContent=libre.value;
 
 function hoursAvailable(){
   if(plage.value=="libre") return +libre.value;
-  const v=(plage.value=="hc1"?hc1.value:hc2.value);
+  const v=(plage.value=="hc1"?"00:50-06:50":"14:50-16:50");
   const [a,b]=v.split("-");
   return (new Date("1970-1-1 "+b)-new Date("1970-1-1 "+a))/36e5;
 }
 
 function totalCurrent(a){
   return a
-   + ll.value*pll.value
-   + lv.value*plv.value
-   + sl.value*psl.value
-   + +pf.value;
+   + (machine.ll?14:0)
+   + (machine.lv?14:0)
+   + (machine.sl?18:0)
+   + 0.7;
 }
 
 function auto(){
   let chosen=null;
   [32,28,24,20].forEach(a=>{
-    const okNet=totalCurrent(a)<=limit.value;
+    const okNet=totalCurrent(a)<=45;
     const v=vehicles[vehicule.value];
     const need=(socTarget.value-socNow.value)/100*v.batt;
     const power=Math.min(v.ac,a*230/1000);
@@ -206,10 +171,7 @@ function auto(){
     if(strategy.value=="objectif" && okNet && okCharge) chosen=a;
     if(strategy.value=="reseau" && okNet && chosen===null) chosen=a;
   });
-  if(chosen!==null){
-    amp.value=chosen;
-    ampVal.textContent=chosen;
-  }
+  if(chosen!==null) amp.value=chosen;
   display();
 }
 
@@ -222,31 +184,26 @@ function display(){
   const v=vehicles[vehicule.value];
   const need=(socTarget.value-socNow.value)/100*v.batt;
   const power=Math.min(v.ac,amp.value*230/1000);
-  const hours=hoursAvailable();
-  const charged=Math.min(need,power*hours);
+  const charged=Math.min(need,power*hoursAvailable());
   const finalSoc=socNow.value*1+charged/v.batt*100;
   const total=totalCurrent(+amp.value);
 
   let txt="",cls="";
-  if(total>limit.value){
+  if(total>45){
     txt="Recharge impossible – réseau saturé";
     cls="bad";
   }else if(charged>=need){
-    txt=`Recharge possible ✔<br>
-         ${charged.toFixed(1)} kWh chargés<br>
-         SOC final : ${finalSoc.toFixed(0)} %`;
+    txt=`Recharge possible ✔<br>${charged.toFixed(1)} kWh chargés<br>SOC final : ${finalSoc.toFixed(0)} %`;
     cls="ok";
   }else{
-    txt=`Recharge partielle<br>
-         ${charged.toFixed(1)} kWh chargés<br>
-         SOC final : ${finalSoc.toFixed(0)} %`;
+    txt=`Recharge partielle<br>${charged.toFixed(1)} kWh chargés<br>SOC final : ${finalSoc.toFixed(0)} %`;
     cls="warn";
   }
   verdict.className="card verdict "+cls;
   verdict.innerHTML=txt;
 }
 
-["amp","ll","lv","sl","socNow","socTarget","vehicule","strategy","plage"]
+["amp","socNow","socTarget","vehicule","strategy","plage"]
 .forEach(id=>document.getElementById(id).oninput=display);
 
 display();
