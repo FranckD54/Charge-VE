@@ -1,0 +1,3 @@
+index.html        ← logique + interface
+manifest.json     ← installation iOS
+service-worker.js ← fonctionnement hors ligne
