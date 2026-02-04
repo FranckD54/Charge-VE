@@ -22,6 +22,9 @@ input,select{width:100%;}
 label{display:block;margin-top:8px;}
 .verdict{font-size:18px;font-weight:bold;}
 .ok{color:var(--ok);} .warn{color:var(--warn);} .bad{color:var(--bad);}
+.hidden{display:none;}
+.readonly{opacity:0.5;}
+nav button{width:49%;}
 </style>
 </head>
 
@@ -29,14 +32,24 @@ label{display:block;margin-top:8px;}
 
 <h1>Charge VE</h1>
 
+<nav>
+<button onclick="show('simu')">Simulation</button>
+<button onclick="show('param')">Paramètres</button>
+</nav>
+
 <!-- SIMULATION -->
+<div id="simu">
+
 <div class="card">
 <label>Mode</label>
 <select id="mode">
 <option value="manuel">Manuel</option>
-<option value="auto">Automatique (1 clic)</option>
+<option value="auto">Automatique</option>
 </select>
-<button id="autoBtn" onclick="auto()">1 clic – Régler la charge</button>
+
+<button id="autoBtn" class="hidden" style="margin-top:12px" onclick="auto()">
+1 clic – Régler la charge
+</button>
 </div>
 
 <div class="card">
@@ -54,14 +67,17 @@ label{display:block;margin-top:8px;}
 
 <div class="card">
 <h3>Appareils actifs</h3>
-<div id="devices"></div>
-<button onclick="addDevice()">➕ Ajouter un appareil</button>
+<div id="devicesSimu"></div>
 </div>
 
 <div class="card verdict" id="verdict"></div>
 <div id="endInfo"></div>
 
+</div>
+
 <!-- PARAMETRES -->
+<div id="param" class="hidden">
+
 <div class="card">
 <h3>Réseau</h3>
 <label>Abonnement</label>
@@ -76,7 +92,7 @@ label{display:block;margin-top:8px;}
 </select>
 <div id="limitInfo"></div>
 
-<p>Type de réseau : Monophasé 230 V</p>
+<p>Type réseau : Monophasé 230 V</p>
 </div>
 
 <div class="card">
@@ -84,6 +100,14 @@ label{display:block;margin-top:8px;}
 <label>Nom</label><input id="carName" value="BMW i5">
 <label>Batterie (kWh)</label><input id="battery" type="number" value="81">
 <label>Intensité max AC (A)</label><input id="carMaxA" type="number" value="32">
+</div>
+
+<div class="card">
+<h3>Appareils (valeurs)</h3>
+<div id="devicesParam"></div>
+<button onclick="addDevice()">➕ Ajouter un appareil</button>
+</div>
+
 </div>
 
 <script>
@@ -94,52 +118,57 @@ let devices=[
 {name:"Fond maison",a:3,on:true}
 ];
 
+function show(id){
+simu.classList.toggle("hidden",id!="simu");
+param.classList.toggle("hidden",id!="param");
+}
+
 function renderDevices(){
-devicesDiv=document.getElementById("devices");
-devicesDiv.innerHTML="";
+let s="",p="";
 devices.forEach((d,i)=>{
-devicesDiv.innerHTML+=`
-<label>
-<input type="checkbox" ${d.on?"checked":""}
+s+=`<label><input type="checkbox" ${d.on?"checked":""}
 onchange="devices[${i}].on=this.checked;display()">
-${d.name} (${d.a} A / ${(d.a*230/1000).toFixed(1)} kW)
-</label>`;
+${d.name}</label>`;
+
+p+=`${d.name} :
+<input type="number" value="${d.a}"
+oninput="devices[${i}].a=this.value;display()"> A<br>`;
 });
+devicesSimu.innerHTML=s;
+devicesParam.innerHTML=p;
 }
 
 function addDevice(){
 let n=prompt("Nom appareil ?");
 let a=parseFloat(prompt("Intensité en A ?"));
-if(n&&a) devices.push({name:n,a:a,on:false});
+if(n&&a){devices.push({name:n,a:a,on:false});}
 renderDevices();display();
 }
 
 function auto(){
 let maxA=Math.min(32,carMaxA.value);
-let amps=[];
-for(let a=maxA;a>=6;a-=2) amps.push(a);
-let limit=getLimitA();
-for(let a of amps){
-if(totalCurrent(a)<=limit){amp.value=a;break;}
+for(let a=maxA;a>=6;a-=2){
+if(totalCurrent(a)<=getLimitA()){amp.value=a;break;}
 }
 display();
 }
 
 function getLimitA(){
-let kva=document.getElementById("kva").value;
-let margin=document.getElementById("margin").value;
-let I=kva*1000/230;
-return I*(1-margin/100);
+let I=kva.value*1000/230;
+return I*(1-margin.value/100);
 }
 
 function totalCurrent(a){
 let sum=a;
-devices.forEach(d=>{if(d.on) sum+=d.a;});
+devices.forEach(d=>{if(d.on) sum+=Number(d.a);});
 return sum;
 }
 
-function startTime(){return 0;}
-function endTime(){return 6;}
+mode.onchange=()=>{
+autoBtn.classList.toggle("hidden",mode.value!="auto");
+amp.disabled = mode.value=="auto";
+amp.classList.toggle("readonly",mode.value=="auto");
+};
 
 function display(){
 socNowVal.textContent=socNow.value;
@@ -147,14 +176,14 @@ socTargetVal.textContent=socTarget.value;
 ampVal.textContent=amp.value;
 kwVal.textContent=(amp.value*230/1000).toFixed(1);
 
+kvaInfo.textContent=`${kva.value} kVA ≈ ${(kva.value*1000/230).toFixed(0)} A`;
+limitInfo.textContent=`Courant max utilisable ≈ ${getLimitA().toFixed(0)} A`;
+
 let batt=battery.value;
 let need=(socTarget.value-socNow.value)/100*batt;
 let power=amp.value*230/1000;
 let charged=Math.min(need,power*6);
 let finalSoc=Number(socNow.value)+charged/batt*100;
-
-kvaInfo.textContent=`${kva.value} kVA ≈ ${(kva.value*1000/230).toFixed(0)} A`;
-limitInfo.textContent=`Courant max utilisable ≈ ${getLimitA().toFixed(0)} A`;
 
 let txt="",cls="";
 if(totalCurrent(Number(amp.value))>getLimitA()){
@@ -173,7 +202,6 @@ verdict.innerHTML=txt;
 endInfo.innerHTML=
 `SOC atteint : <b>${finalSoc.toFixed(0)} %</b><br>
 Ampérage : <b>${amp.value} A</b> (${(amp.value*230/1000).toFixed(1)} kW)`;
-
 }
 
 ["socNow","socTarget","amp","kva","margin","battery","carMaxA"].forEach(id=>{
