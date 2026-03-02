@@ -72,6 +72,7 @@ nav button{width:49%;}
 
 <div class="card verdict" id="verdict"></div>
 <div id="endInfo"></div>
+<div id="timeInfo"></div>
 
 </div>
 
@@ -141,7 +142,7 @@ devicesParam.innerHTML=p;
 function addDevice(){
 let n=prompt("Nom appareil ?");
 let a=parseFloat(prompt("Intensité en A ?"));
-if(n&&a){devices.push({name:n,a:a,on:false});}
+if(n && Number.isFinite(a) && a>0){devices.push({name:n,a:a,on:false});}
 renderDevices();display();
 }
 
@@ -154,8 +155,8 @@ display();
 }
 
 function getLimitA(){
-let I=kva.value*1000/230;
-return I*(1-margin.value/100);
+let I=Number(kva.value)*1000/230;
+return I*(1-Number(margin.value)/100);
 }
 
 function totalCurrent(a){
@@ -171,25 +172,33 @@ amp.classList.toggle("readonly",mode.value=="auto");
 };
 
 function display(){
-socNowVal.textContent=socNow.value;
-socTargetVal.textContent=socTarget.value;
-ampVal.textContent=amp.value;
-kwVal.textContent=(amp.value*230/1000).toFixed(1);
+const socNowNum=Number(socNow.value);
+const socTargetNum=Number(socTarget.value);
+const ampNum=Number(amp.value);
+const batt=Number(battery.value);
 
-kvaInfo.textContent=`${kva.value} kVA ≈ ${(kva.value*1000/230).toFixed(0)} A`;
+socNowVal.textContent=socNowNum;
+socTargetVal.textContent=socTargetNum;
+ampVal.textContent=ampNum;
+kwVal.textContent=(ampNum*230/1000).toFixed(1);
+
+kvaInfo.textContent=`${kva.value} kVA ≈ ${(Number(kva.value)*1000/230).toFixed(0)} A`;
 limitInfo.textContent=`Courant max utilisable ≈ ${getLimitA().toFixed(0)} A`;
 
-let batt=battery.value;
-let need=(socTarget.value-socNow.value)/100*batt;
-let power=amp.value*230/1000;
+let need=Math.max(0,(socTargetNum-socNowNum)/100*batt);
+let power=ampNum*230/1000;
 let charged=Math.min(need,power*6);
-let finalSoc=Number(socNow.value)+charged/batt*100;
+let finalSoc=socNowNum+(batt>0?charged/batt*100:0);
+let durationH=power>0 ? need/power : Infinity;
 
 let txt="",cls="";
-if(totalCurrent(Number(amp.value))>getLimitA()){
+if(socTargetNum<=socNowNum){
+txt="Objectif déjà atteint ✔";
+cls="ok";
+}else if(totalCurrent(ampNum)>getLimitA()){
 txt="Recharge impossible – limite réseau";
 cls="bad";
-}else if(finalSoc>=socTarget.value){
+}else if(finalSoc>=socTargetNum){
 txt="Recharge possible ✔";
 cls="ok";
 }else{
@@ -201,7 +210,11 @@ verdict.innerHTML=txt;
 
 endInfo.innerHTML=
 `SOC atteint : <b>${finalSoc.toFixed(0)} %</b><br>
-Ampérage : <b>${amp.value} A</b> (${(amp.value*230/1000).toFixed(1)} kW)`;
+Ampérage : <b>${ampNum} A</b> (${(ampNum*230/1000).toFixed(1)} kW)`;
+
+timeInfo.innerHTML = !Number.isFinite(durationH)
+? ""
+: `Temps estimé pour atteindre l'objectif : <b>${durationH.toFixed(1)} h</b>`;
 }
 
 ["socNow","socTarget","amp","kva","margin","battery","carMaxA"].forEach(id=>{
